@@ -89,8 +89,8 @@ ADS_API_TOKEN=your_ads_api_token
 | Provider | `SMTP_HOST` | `SMTP_PORT` |
 |----------|-------------|-------------|
 | Gmail | smtp.gmail.com | 465 |
-| QQ Mail (QQ邮箱) | smtp.qq.com | 465 |
-| 163 Mail (163邮箱) | smtp.163.com | 465 |
+| QQ Mail | smtp.qq.com | 465 |
+| 163 Mail | smtp.163.com | 465 |
 | Outlook | smtp.office365.com | 587 |
 
 Most providers require you to generate an **App Password** (a dedicated password for third-party apps) rather than using your regular login password. Look for this option under your email account's security settings.
