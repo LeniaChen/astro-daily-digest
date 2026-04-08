@@ -186,6 +186,8 @@ Some RSS feed URLs for common journals:
 | MNRAS | https://academic.oup.com/rss/mnras |
 | A&A | https://www.aanda.org/component/rss/?type=journal |
 
+> **Note:** ApJ, ApJL, and ARA&A do not have accessible RSS feeds. Use the NASA ADS method below instead.
+
 ### Add a journal via NASA ADS (no RSS required)
 
 For journals without accessible RSS feeds, you can use the NASA ADS API. The `fetch_apjl()` function in `digest.py` handles this. To add another journal, duplicate that function and change the `bibstem` value:
@@ -213,6 +215,7 @@ Common `bibstem` values:
 |---------|---------|
 | ApJL | `ApJL` |
 | ApJ | `ApJ` |
+| ARA&A | `ARA+A` |
 | AJ (Astronomical Journal) | `AJ` |
 | MNRAS | `MNRAS` |
 | A&A | `A&A` |
