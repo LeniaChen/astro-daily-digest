@@ -291,9 +291,21 @@ Files generated at runtime (not tracked by git):
 
 ## Notes
 
-- ApJL articles are fetched via [NASA ADS API](https://ui.adsabs.harvard.edu/help/api/) by current month's publication date. New articles added to ADS throughout the month will be picked up on subsequent runs.
-- arXiv full text is preferred over abstracts. If an arXiv version is not found, the summary is generated from the abstract only, and the email will include a warning.
-- The script uses `seen_articles.json` to track processed articles. Deleting this file will cause all current-month articles to be re-sent.
+- ApJL articles are fetched via [NASA ADS API](https://ui.adsabs.harvard.edu/help/api/) and filtered to today's date only. This means the first run is safe — it will never pull the entire month's backlog.
+- arXiv full text is preferred over abstracts. The script first searches arXiv directly, then falls back to Semantic Scholar for fuzzy title matching. If no full text is found, the summary is generated from the abstract only, and the email will include a warning.
+- The script uses `seen_articles.json` to track processed articles, preventing duplicates across runs.
+
+---
+
+## Changelog
+
+### 2026-04-08
+
+**Fix: ApJL now fetches today's articles only**
+Previously, the ADS query returned all articles published in the current month. On a first run (with an empty `seen_articles.json`), this would process and summarize the entire month's backlog, consuming a large number of API tokens. The script now filters results to the current date only, so every run — including the very first — retrieves only that day's new papers.
+
+**New: Semantic Scholar fallback for full-text retrieval**
+When an arXiv version of a paper cannot be found via direct arXiv title search (which requires an exact match), the script now falls back to [Semantic Scholar](https://www.semanticscholar.org/), which uses fuzzy matching and has broader coverage. This improves the full-text retrieval rate for Nature and Nature Astronomy papers whose arXiv titles differ slightly from the published version.
 
 ---
 
