@@ -1,0 +1,6 @@
+.env
+seen_articles.json
+digest.log
+__pycache__/
+*.pyc
+.DS_Store
