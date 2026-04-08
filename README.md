@@ -15,13 +15,13 @@ Every day at 8:00 AM, the script:
 
 Each paper summary includes:
 
-- **中文标题** — Chinese title translation
-- **导读** — Plain-language introduction (2–3 sentences)
-- **核心物理问题** — Core physics question and its place in the field
-- **方法与数据** — Methods, data, and key assumptions
-- **主要结论** — Main conclusions and strength of evidence
-- **物理意义** — Physical implications and broader impact
-- **你的判断** — Critical assessment: genuine contribution or incremental work?
+- Title
+- Plain-language introduction (2–3 sentences)
+- Core physics question and its place in the field
+- Methods, data, and key assumptions
+- Main conclusions and strength of evidence
+- Physical implications and broader impact
+- Critical assessment: genuine contribution or incremental work?
 - Items 1–10: Background / Scientific goal / Method / Results / Conclusion / Significance / Whether it touches fundamental physics / Whether it offers a new physical picture / Whether it addresses a major astrophysical problem / Whether the work is easily replaceable by AI
 
 ---
