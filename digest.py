@@ -138,15 +138,16 @@ def fetch_rss() -> list[dict]:
 
 
 def fetch_apjl() -> list[dict]:
-    """Fetch this month's ApJL articles from NASA ADS, return unseen ones."""
-    month = date.today().strftime("%Y-%m")
+    """Fetch today's ApJL articles from NASA ADS."""
+    today = date.today()
+    month = today.strftime("%Y-%m")
     try:
         resp = requests.get(
             "https://api.adsabs.harvard.edu/v1/search/query",
             headers={"Authorization": f"Bearer {ADS_API_TOKEN}"},
             params={
                 "q":    f"bibstem:ApJL pubdate:{month}",
-                "fl":   "title,bibcode,abstract,identifier,doi",
+                "fl":   "title,bibcode,abstract,identifier,doi,date",
                 "rows": 100,
                 "sort": "date desc",
             },
@@ -160,6 +161,11 @@ def fetch_apjl() -> list[dict]:
     docs = resp.json().get("response", {}).get("docs", [])
     articles = []
     for doc in docs:
+        # Date filter: today only (ADS date field is like "2026-04-08T00:00:00Z")
+        pub_date_str = doc.get("date", "")[:10]
+        if pub_date_str != str(today):
+            continue
+
         title = doc.get("title", [""])[0]
         bibcode = doc.get("bibcode", "")
         abstract = doc.get("abstract", "")
@@ -175,7 +181,7 @@ def fetch_apjl() -> list[dict]:
             "abstract": abstract,
             "id":       bibcode,
             "journal":  "ApJL",
-            "arxiv_id": arxiv_id,  # pre-resolved, skip search_arxiv
+            "arxiv_id": arxiv_id,
         })
     return articles
 
@@ -203,6 +209,26 @@ def search_arxiv(title: str) -> str | None:
         return arxiv_id
     except Exception as e:
         print(f"  arXiv search error: {e}")
+        return None
+
+
+def search_semantic_scholar_arxiv(title: str) -> str | None:
+    """Use Semantic Scholar fuzzy search to find arXiv ID. Fallback after search_arxiv fails."""
+    try:
+        resp = requests.get(
+            "https://api.semanticscholar.org/graph/v1/paper/search",
+            params={"query": title, "fields": "externalIds", "limit": 3},
+            timeout=15,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        resp.raise_for_status()
+        for paper in resp.json().get("data", []):
+            arxiv_id = paper.get("externalIds", {}).get("ArXiv")
+            if arxiv_id:
+                return arxiv_id
+        return None
+    except Exception as e:
+        print(f"  Semantic Scholar error: {e}")
         return None
 
 
@@ -355,9 +381,16 @@ def main():
 
         # 1. Try arXiv full text
         # ApJL articles from ADS already have arxiv_id resolved
-        arxiv_id = article.get("arxiv_id") or search_arxiv(title)
-        if not article.get("arxiv_id"):
-            time.sleep(1)  # be polite to arXiv API only when we searched
+        arxiv_id = article.get("arxiv_id")
+        if not arxiv_id:
+            arxiv_id = search_arxiv(title)
+            time.sleep(1)  # be polite to arXiv API
+        if not arxiv_id:
+            print("  arXiv not found, trying Semantic Scholar...")
+            arxiv_id = search_semantic_scholar_arxiv(title)
+            if arxiv_id:
+                print(f"  Semantic Scholar found arXiv ID: {arxiv_id}")
+            time.sleep(1)
 
         full_text = None
         if arxiv_id:
