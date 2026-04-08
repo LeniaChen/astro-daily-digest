@@ -219,7 +219,6 @@ Common `bibstem` values:
 | AJ (Astronomical Journal) | `AJ` |
 | MNRAS | `MNRAS` |
 | A&A | `A&A` |
-| PASP | `PASP` |
 
 Then add the new function to the `main()` function:
 ```python
