@@ -32,10 +32,10 @@ Each paper summary includes:
 
 - Python 3.11+
 - macOS (for cron scheduling; Linux also works)
-- A running proxy (e.g. Clash) if you are in mainland China — needed for Gmail SMTP
+- Any email account with SMTP access (Gmail, QQ Mail, 163, Outlook, etc.)
 - The following accounts/API keys:
-  - [OpenRouter](https://openrouter.ai) account with API key (to call Claude)
-  - Gmail account with [App Password](https://myaccount.google.com/apppasswords) enabled
+  - [OpenRouter](https://openrouter.ai) account with API key (to call the AI model)
+  - Email account with SMTP enabled (see configuration below)
   - [NASA ADS](https://ui.adsabs.harvard.edu) account with API token (free)
 
 ---
@@ -67,20 +67,52 @@ Edit `.env`:
 
 ```
 OPENROUTER_API_KEY=your_openrouter_api_key
-EMAIL_FROM=your_gmail@gmail.com
-EMAIL_TO=your_gmail@gmail.com
-EMAIL_PASSWORD=your_gmail_app_password_without_spaces
+EMAIL_FROM=your_email@example.com
+EMAIL_TO=your_email@example.com
+EMAIL_PASSWORD=your_email_app_password
+
+# SMTP settings
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+
+# Proxy (see note below)
+PROXY_HOST=
+PROXY_PORT=7890
+
 ADS_API_TOKEN=your_ads_api_token
 ```
 
 > ⚠️ Never commit `.env` to git. It is already listed in `.gitignore`.
+
+#### Supported email providers
+
+| Provider | `SMTP_HOST` | `SMTP_PORT` |
+|----------|-------------|-------------|
+| Gmail | smtp.gmail.com | 465 |
+| QQ Mail (QQ邮箱) | smtp.qq.com | 465 |
+| 163 Mail (163邮箱) | smtp.163.com | 465 |
+| Outlook | smtp.office365.com | 587 |
+
+Most providers require you to generate an **App Password** (a dedicated password for third-party apps) rather than using your regular login password. Look for this option under your email account's security settings.
+
+#### Do I need a proxy?
+
+A proxy is only required if your SMTP provider is blocked in your region.
+
+| Situation | Proxy needed? |
+|-----------|---------------|
+| Using Gmail from mainland China | **Yes** — Gmail SMTP is blocked |
+| Using QQ / 163 / Outlook from mainland China | No |
+| Outside mainland China | No |
+
+If you need a proxy, set `PROXY_HOST=127.0.0.1` and `PROXY_PORT` to your local proxy port (e.g. Clash defaults to `7890`). Leave `PROXY_HOST` blank to disable the proxy.
 
 #### How to get each credential
 
 | Credential | Where to get it |
 |---|---|
 | `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) |
-| `EMAIL_PASSWORD` | Google Account → Security → 2-Step Verification → App Passwords |
+| `EMAIL_PASSWORD` | Your email provider's security settings → App Passwords |
 | `ADS_API_TOKEN` | [ui.adsabs.harvard.edu](https://ui.adsabs.harvard.edu) → Account → API Token |
 
 ### 4. Test run
@@ -115,7 +147,7 @@ Add this line:
 
 Replace `/path/to/` with the actual path to the cloned folder (e.g. `/Users/yourname/astro-daily-digest`).
 
-> The script uses a local Clash proxy on `127.0.0.1:7890` for Gmail SMTP. If you are not in mainland China or use a different proxy setup, edit the `send_email()` function in `digest.py` accordingly.
+> The proxy is only activated when `PROXY_HOST` is set in `.env`. If you don't need a proxy, leave it blank.
 
 ---
 

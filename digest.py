@@ -28,6 +28,10 @@ EMAIL_FROM         = os.environ["EMAIL_FROM"]
 EMAIL_TO           = os.environ["EMAIL_TO"]
 EMAIL_PASSWORD     = os.environ["EMAIL_PASSWORD"]
 ADS_API_TOKEN      = os.environ["ADS_API_TOKEN"]
+SMTP_HOST          = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT          = int(os.environ.get("SMTP_PORT", "465"))
+PROXY_HOST         = os.environ.get("PROXY_HOST", "")   # e.g. 127.0.0.1
+PROXY_PORT         = int(os.environ.get("PROXY_PORT", "7890"))
 
 SEEN_FILE = Path(__file__).parent / "seen_articles.json"
 
@@ -305,20 +309,28 @@ def build_html_email(summaries: list[dict]) -> str:
 
 
 def send_email(subject: str, html_body: str):
-    import socks
-    import socket
-    # Route through Clash local proxy (127.0.0.1:7890)
-    socks.set_default_proxy(socks.HTTP, "127.0.0.1", 7890)
-    socket.socket = socks.socksocket
+    # Route through proxy if PROXY_HOST is set
+    if PROXY_HOST:
+        import socks
+        import socket
+        socks.set_default_proxy(socks.HTTP, PROXY_HOST, PROXY_PORT)
+        socket.socket = socks.socksocket
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = EMAIL_FROM
     msg["To"]      = EMAIL_TO
     msg.attach(MIMEText(html_body, "html", "utf-8"))
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(EMAIL_FROM, EMAIL_PASSWORD)
-        server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
+
+    if SMTP_PORT == 587:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_FROM, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
+    else:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+            server.login(EMAIL_FROM, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
