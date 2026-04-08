@@ -1,6 +1,8 @@
 # 🔭 Astro Daily Digest
 
-A daily email digest of astrophysics papers from **Nature**, **Nature Astronomy**, and **The Astrophysical Journal Letters (ApJL)** — automatically fetched, summarized in Chinese using Claude AI, and delivered to your inbox every morning.
+A daily email digest of astrophysics papers from **Nature**, **Nature Astronomy**, and **The Astrophysical Journal Letters (ApJL)** — automatically fetched, summarized using AI, and delivered to your inbox every morning.
+
+Summaries are generated via [OpenRouter](https://openrouter.ai), which means you can use **any model** — Claude, GPT-4o, Gemini, DeepSeek, and more — simply by changing one line in the config.
 
 ---
 
@@ -136,6 +138,16 @@ RSS_SOURCES = [
 ]
 ```
 The third parameter: `True` = filter by astronomy keywords, `False` = include all articles.
+
+### Change the AI model
+In `digest.py`, find the `summarize()` function and change the `model` parameter:
+```python
+model="anthropic/claude-opus-4"   # default
+model="openai/gpt-4o"             # OpenAI
+model="google/gemini-2.0-flash-001"  # Google, fast and cheap
+model="deepseek/deepseek-r1"      # DeepSeek
+```
+See the full list of supported models at [openrouter.ai/models](https://openrouter.ai/models).
 
 ### Change the summary language or structure
 Edit the `SUMMARY_PROMPT` variable in `digest.py`.
