@@ -160,29 +160,110 @@ Edit the cron expression. Format: `minute hour * * *`
 0  9 * * *   # 9:00 AM
 ```
 
-### Add more RSS-based journals
-In `digest.py`, add an entry to `RSS_SOURCES`:
+### Add a journal with RSS feed
+
+Many journals provide RSS feeds. To add one, open `digest.py` and add an entry to `RSS_SOURCES`:
+
 ```python
 RSS_SOURCES = [
     ("Nature Astronomy", "https://www.nature.com/natastron.rss", False),
     ("Nature",           "https://www.nature.com/nature.rss",    True),
-    ("Your Journal",     "https://your-journal-rss-url",         False),
+    ("Your Journal",     "https://your-journal-rss-url",         False),  # add here
 ]
 ```
-The third parameter: `True` = filter by astronomy keywords, `False` = include all articles.
+
+The third parameter controls filtering:
+- `False` — include all articles from this feed
+- `True` — only include articles that match astronomy-related keywords (useful for broad journals like *Nature*)
+
+Some RSS feed URLs for common journals:
+
+| Journal | RSS URL |
+|---------|---------|
+| Nature Astronomy | https://www.nature.com/natastron.rss |
+| Nature | https://www.nature.com/nature.rss |
+| Science | https://www.science.org/rss/news_current.xml |
+| MNRAS | https://academic.oup.com/rss/mnras |
+| A&A | https://www.aanda.org/component/rss/?type=journal |
+
+### Add a journal via NASA ADS (no RSS required)
+
+For journals without accessible RSS feeds, you can use the NASA ADS API. The `fetch_apjl()` function in `digest.py` handles this. To add another journal, duplicate that function and change the `bibstem` value:
+
+```python
+def fetch_apj() -> list[dict]:
+    month = date.today().strftime("%Y-%m")
+    resp = requests.get(
+        "https://api.adsabs.harvard.edu/v1/search/query",
+        headers={"Authorization": f"Bearer {ADS_API_TOKEN}"},
+        params={
+            "q":    f"bibstem:ApJ pubdate:{month}",   # change ApJ to your journal
+            "fl":   "title,bibcode,abstract,identifier,doi",
+            "rows": 100,
+            "sort": "date desc",
+        },
+        timeout=15,
+    )
+    # ... rest of function identical to fetch_apjl()
+```
+
+Common `bibstem` values:
+
+| Journal | bibstem |
+|---------|---------|
+| ApJL | `ApJL` |
+| ApJ | `ApJ` |
+| AJ (Astronomical Journal) | `AJ` |
+| MNRAS | `MNRAS` |
+| A&A | `A&A` |
+| PASP | `PASP` |
+
+Then add the new function to the `main()` function:
+```python
+all_articles = fetch_rss() + fetch_apjl() + fetch_apj()
+```
+
+And add the journal name to `JOURNAL_ORDER` and `JOURNAL_COLORS` for proper email formatting.
+
+### Filter articles by topic
+
+You can instruct the AI to skip articles outside your area of interest. In `SUMMARY_PROMPT`, add a filter instruction at the top:
+
+```python
+SUMMARY_PROMPT = """\
+...
+If this paper is NOT related to [your topic, e.g. galaxy formation and evolution],
+output exactly: 【SKIP】
+Otherwise, proceed with the full summary below.
+...
+"""
+```
+
+Then in `main()`, add a check after summarizing:
+
+```python
+summary = summarize(title, content, is_abstract_only)
+if "【SKIP】" in summary:
+    print("  Skipping (not relevant).")
+    seen.add(article["id"])
+    save_seen(seen)
+    continue
+```
+
+This way, irrelevant articles are silently skipped and will not appear in the email.
 
 ### Change the AI model
 In `digest.py`, find the `summarize()` function and change the `model` parameter:
 ```python
-model="anthropic/claude-opus-4"   # default
-model="openai/gpt-4o"             # OpenAI
+model="anthropic/claude-opus-4"      # default
+model="openai/gpt-4o"                # OpenAI
 model="google/gemini-2.0-flash-001"  # Google, fast and cheap
-model="deepseek/deepseek-r1"      # DeepSeek
+model="deepseek/deepseek-r1"         # DeepSeek
 ```
 See the full list of supported models at [openrouter.ai/models](https://openrouter.ai/models).
 
-### Change the summary language or structure
-Edit the `SUMMARY_PROMPT` variable in `digest.py`.
+### Customize the summary structure or language
+Edit the `SUMMARY_PROMPT` variable in `digest.py`. You can change the output language, add or remove sections, adjust the tone, or focus on specific aspects of the paper.
 
 ### Change recipient email
 Edit `EMAIL_TO` in `.env`.
