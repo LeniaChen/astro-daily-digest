@@ -206,7 +206,12 @@ def fetch_arxiv_daily() -> list[dict]:
             continue
         for entry in feed.entries:
             raw_id = entry.get("id", entry.get("link", ""))
-            arxiv_id = raw_id.split("/abs/")[-1]
+            if "/abs/" in raw_id:
+                arxiv_id = raw_id.split("/abs/")[-1]
+            elif "arXiv.org:" in raw_id:
+                arxiv_id = raw_id.split("arXiv.org:")[-1]
+            else:
+                arxiv_id = raw_id
             arxiv_id = re.sub(r"v\d+$", "", arxiv_id)
             if not arxiv_id or arxiv_id in seen_ids:
                 continue
