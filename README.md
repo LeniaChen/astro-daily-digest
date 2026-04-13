@@ -1,8 +1,8 @@
 # 🔭 Astro Daily Digest
 
-A daily email digest of astrophysics papers from **Nature**, **Nature Astronomy**, **The Astrophysical Journal Letters (ApJL)**, and **arXiv** (astro-ph.GA + astro-ph.CO) — automatically fetched, summarized using AI, and delivered to your inbox every morning.
+A daily email digest of astrophysics papers from **Nature**, **Nature Astronomy**, and **The Astrophysical Journal Letters (ApJL)** — automatically fetched, summarized using AI, and delivered to your inbox every morning.
 
-Summaries are generated via [DeepSeek API](https://platform.deepseek.com) (DeepSeek V3 by default). The `openai`-compatible interface means you can switch to any other provider by changing two lines in the config.
+Summaries are generated via [OpenRouter](https://openrouter.ai), which means you can use **any model** — Claude, GPT-4o, Gemini, DeepSeek, and more — simply by changing one line in the config.
 
 ---
 
@@ -10,11 +10,10 @@ Summaries are generated via [DeepSeek API](https://platform.deepseek.com) (DeepS
 
 Every day at 8:00 AM, the script:
 
-1. Fetches new articles from Nature (astronomy-filtered), Nature Astronomy, ApJL, and arXiv (astro-ph.GA + astro-ph.CO)
+1. Fetches new articles from Nature (astronomy-filtered), Nature Astronomy, ApJL, and arXiv daily new submissions
 2. Retrieves full text from arXiv (falls back to abstract if unavailable)
-3. Generates a structured Chinese summary for each paper using DeepSeek V3
-4. Sends a formatted HTML email grouped by journal (Nature → Nature Astronomy → ApJL → arXiv)
-5. For arXiv papers, annotates whether the paper is published (journal reference) or submitted (extracted from comments)
+3. Generates a structured Chinese summary for each paper using Claude AI
+4. Sends a formatted HTML email grouped by journal
 
 Each paper summary includes:
 
@@ -35,7 +34,7 @@ Each paper summary includes:
 - macOS (for cron scheduling; Linux also works)
 - Any email account with SMTP access (Gmail, QQ Mail, 163, Outlook, etc.)
 - The following accounts/API keys:
-  - [DeepSeek](https://platform.deepseek.com) account with API key
+  - [OpenRouter](https://openrouter.ai) account with API key (to call the AI model)
   - Email account with SMTP enabled (see configuration below)
   - [NASA ADS](https://ui.adsabs.harvard.edu) account with API token (free)
 
@@ -67,7 +66,7 @@ cp .env.example .env
 Edit `.env`:
 
 ```
-DEEPSEEK_API_KEY=your_deepseek_api_key
+OPENROUTER_API_KEY=your_openrouter_api_key
 EMAIL_FROM=your_email@example.com
 EMAIL_TO=your_email@example.com
 EMAIL_PASSWORD=your_email_app_password
@@ -112,7 +111,7 @@ If you need a proxy, set `PROXY_HOST=127.0.0.1` and `PROXY_PORT` to your local p
 
 | Credential | Where to get it |
 |---|---|
-| `DEEPSEEK_API_KEY` | [platform.deepseek.com](https://platform.deepseek.com) → API Keys |
+| `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) |
 | `EMAIL_PASSWORD` | Your email provider's security settings → App Passwords |
 | `ADS_API_TOKEN` | [ui.adsabs.harvard.edu](https://ui.adsabs.harvard.edu) → Account → API Token |
 
@@ -228,6 +227,30 @@ all_articles = fetch_rss() + fetch_apjl() + fetch_apj()
 
 And add the journal name to `JOURNAL_ORDER` and `JOURNAL_COLORS` for proper email formatting.
 
+### arXiv daily new submissions
+
+The script fetches daily new submissions from arXiv and appends them at the end of the email. To configure which categories to follow, edit `ARXIV_CATEGORIES` in `digest.py`:
+
+```python
+ARXIV_CATEGORIES = [
+    "astro-ph.GA",   # Astrophysics of Galaxies
+    "astro-ph.CO",   # Cosmology and Nongalactic Astrophysics
+]
+```
+
+You can add or remove any arXiv category. Common astrophysics categories:
+
+| Category | Description |
+|----------|-------------|
+| `astro-ph.GA` | Astrophysics of Galaxies |
+| `astro-ph.CO` | Cosmology and Nongalactic Astrophysics |
+| `astro-ph.SR` | Solar and Stellar Astrophysics |
+| `astro-ph.HE` | High Energy Astrophysical Phenomena |
+| `astro-ph.EP` | Earth and Planetary Astrophysics |
+| `astro-ph.IM` | Instrumentation and Methods |
+
+To filter arXiv papers by keyword (e.g. only keep papers mentioning "disk" or "break"), combine with the topic filter below.
+
 ### Filter articles by topic
 
 You can instruct the AI to skip articles outside your area of interest. In `SUMMARY_PROMPT`, add a filter instruction at the top:
@@ -256,19 +279,14 @@ if "【SKIP】" in summary:
 This way, irrelevant articles are silently skipped and will not appear in the email.
 
 ### Change the AI model
-In `digest.py`, find the `summarize()` function and change the `model` and `base_url` parameters:
+In `digest.py`, find the `summarize()` function and change the `model` parameter:
 ```python
-# DeepSeek (default)
-base_url="https://api.deepseek.com"
-model="deepseek-chat"       # DeepSeek V3
-model="deepseek-reasoner"   # DeepSeek R1, stronger reasoning, higher cost
-
-# Switch to OpenRouter for access to other models
-base_url="https://openrouter.ai/api/v1"
-model="anthropic/claude-opus-4"
-model="openai/gpt-4o"
-model="google/gemini-2.0-flash-001"
+model="anthropic/claude-opus-4"      # default
+model="openai/gpt-4o"                # OpenAI
+model="google/gemini-2.0-flash-001"  # Google, fast and cheap
+model="deepseek/deepseek-r1"         # DeepSeek
 ```
+See the full list of supported models at [openrouter.ai/models](https://openrouter.ai/models).
 
 ### Customize the summary structure or language
 Edit the `SUMMARY_PROMPT` variable in `digest.py`. You can change the output language, add or remove sections, adjust the tone, or focus on specific aspects of the paper.
@@ -307,14 +325,8 @@ Files generated at runtime (not tracked by git):
 
 ### 2026-04-13
 
-**Switch to DeepSeek API**
-Replaced OpenRouter + Claude with DeepSeek API (DeepSeek V3, `deepseek-chat`). The `openai`-compatible interface requires no other code changes. Environment variable renamed from `OPENROUTER_API_KEY` to `DEEPSEEK_API_KEY`.
-
 **New: arXiv daily fetch**
-Added daily fetching from arXiv RSS feeds for `astro-ph.GA` and `astro-ph.CO`. Papers appear at the end of each email after journal articles. Duplicates across categories are automatically deduplicated.
-
-**New: Journal annotation for arXiv papers**
-Each arXiv paper now shows its publication/submission status: `📄 已发表：[journal]` if a journal reference exists, or `📨 投稿至：[journal]` if extracted from the comments field.
+Added daily fetching from arXiv RSS feeds. Configure which categories to follow via `ARXIV_CATEGORIES` in `digest.py`. arXiv papers appear at the end of the email after journal articles. For each arXiv paper, the email shows whether the paper has been published (`📄 已发表`) or submitted (`📨 投稿至`) to a journal, based on arXiv metadata.
 
 ### 2026-04-08
 
