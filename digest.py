@@ -23,7 +23,7 @@ from bs4 import BeautifulSoup
 from openai import OpenAI
 
 # ── Config (from environment variables) ──────────────────────────────────────
-OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
+DEEPSEEK_API_KEY   = os.environ["DEEPSEEK_API_KEY"]
 EMAIL_FROM         = os.environ["EMAIL_FROM"]
 EMAIL_TO           = os.environ["EMAIL_TO"]
 EMAIL_PASSWORD     = os.environ["EMAIL_PASSWORD"]
@@ -39,6 +39,12 @@ SEEN_FILE = Path(__file__).parent / "seen_articles.json"
 RSS_SOURCES = [
     ("Nature Astronomy", "https://www.nature.com/natastron.rss",   False),
     ("Nature",           "https://www.nature.com/nature.rss",      True),
+]
+
+# arXiv categories to fetch daily
+ARXIV_CATEGORIES = [
+    "astro-ph.GA",   # Astrophysics of Galaxies
+    "astro-ph.CO",   # Cosmology and Nongalactic Astrophysics
 ]
 
 ASTRO_KEYWORDS = [
@@ -186,7 +192,91 @@ def fetch_apjl() -> list[dict]:
     return articles
 
 
-def search_arxiv(title: str) -> str | None:
+def fetch_arxiv_daily() -> list[dict]:
+    """Fetch today's new submissions from arXiv RSS, then enrich with journal_ref/comment."""
+    articles = []
+    seen_ids: set = set()
+
+    for category in ARXIV_CATEGORIES:
+        url = f"https://rss.arxiv.org/rss/{category}"
+        try:
+            feed = feedparser.parse(url)
+        except Exception as e:
+            print(f"  arXiv RSS error ({category}): {e}")
+            continue
+        for entry in feed.entries:
+            raw_id = entry.get("id", entry.get("link", ""))
+            arxiv_id = raw_id.split("/abs/")[-1]
+            arxiv_id = re.sub(r"v\d+$", "", arxiv_id)
+            if not arxiv_id or arxiv_id in seen_ids:
+                continue
+            seen_ids.add(arxiv_id)
+            articles.append({
+                "title":       entry.title,
+                "link":        f"https://arxiv.org/abs/{arxiv_id}",
+                "abstract":    BeautifulSoup(entry.get("summary", ""), "html.parser").get_text(),
+                "id":          arxiv_id,
+                "journal":     "arXiv",
+                "arxiv_id":    arxiv_id,
+                "journal_ref": "",
+                "comment":     "",
+            })
+
+    if not articles:
+        return articles
+
+    # Batch fetch journal_ref and comment from arXiv API
+    id_list = ",".join(a["arxiv_id"] for a in articles)
+    try:
+        resp = requests.get(
+            "http://export.arxiv.org/api/query",
+            params={"id_list": id_list, "max_results": len(articles)},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            root = ET.fromstring(resp.text)
+            ns = {
+                "atom":  "http://www.w3.org/2005/Atom",
+                "arxiv": "http://arxiv.org/schemas/atom",
+            }
+            meta = {}
+            for entry in root.findall("atom:entry", ns):
+                id_el = entry.find("atom:id", ns)
+                if id_el is None:
+                    continue
+                aid = id_el.text.split("/abs/")[-1]
+                aid = re.sub(r"v\d+$", "", aid)
+                jr_el = entry.find("arxiv:journal_ref", ns)
+                cm_el = entry.find("arxiv:comment", ns)
+                meta[aid] = {
+                    "journal_ref": jr_el.text.strip() if jr_el is not None else "",
+                    "comment":     cm_el.text.strip() if cm_el is not None else "",
+                }
+            for a in articles:
+                if a["arxiv_id"] in meta:
+                    a["journal_ref"] = meta[a["arxiv_id"]]["journal_ref"]
+                    a["comment"]     = meta[a["arxiv_id"]]["comment"]
+    except Exception as e:
+        print(f"  arXiv metadata fetch error: {e}")
+
+    return articles
+
+
+def extract_submission_info(journal_ref: str, comment: str) -> str:
+    """Return a display string for journal status, or empty string if unknown."""
+    if journal_ref:
+        return f"📄 已发表：{journal_ref}"
+    if comment:
+        m = re.search(
+            r"(?:submitted to|accepted (?:for publication )?(?:in|by))\s+([^,\.\n;]+)",
+            comment, re.I,
+        )
+        if m:
+            return f"📨 投稿至：{m.group(1).strip()}"
+    return ""
+
+
+def search_arxiv(title: str) -> "str | None":
     """Return arXiv ID for the best title match, or None."""
     url = "http://export.arxiv.org/api/query"
     params = {
@@ -212,7 +302,7 @@ def search_arxiv(title: str) -> str | None:
         return None
 
 
-def search_semantic_scholar_arxiv(title: str) -> str | None:
+def search_semantic_scholar_arxiv(title: str) -> "str | None":
     """Use Semantic Scholar fuzzy search to find arXiv ID. Fallback after search_arxiv fails."""
     try:
         resp = requests.get(
@@ -232,7 +322,7 @@ def search_semantic_scholar_arxiv(title: str) -> str | None:
         return None
 
 
-def fetch_arxiv_html(arxiv_id: str) -> str | None:
+def fetch_arxiv_html(arxiv_id: str) -> "str | None":
     """Fetch and clean the HTML full text from arXiv. Returns plain text or None."""
     url = f"https://arxiv.org/html/{arxiv_id}"
     try:
@@ -267,8 +357,8 @@ def fetch_arxiv_html(arxiv_id: str) -> str | None:
 
 def summarize(title: str, content: str, is_abstract_only: bool) -> str:
     client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY,
+        base_url="https://api.deepseek.com",
+        api_key=DEEPSEEK_API_KEY,
     )
     content_label = "摘要（注意：未找到全文，仅基于摘要总结，信息有限）" if is_abstract_only else "全文"
     prompt = SUMMARY_PROMPT.format(
@@ -277,7 +367,7 @@ def summarize(title: str, content: str, is_abstract_only: bool) -> str:
         content=content,
     )
     msg = client.chat.completions.create(
-        model="anthropic/claude-opus-4",
+        model="deepseek-chat",
         max_tokens=1800,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -287,11 +377,12 @@ def summarize(title: str, content: str, is_abstract_only: bool) -> str:
     return result
 
 
-JOURNAL_ORDER = ["Nature", "Nature Astronomy", "ApJL"]
+JOURNAL_ORDER = ["Nature", "Nature Astronomy", "ApJL", "arXiv"]
 JOURNAL_COLORS = {
     "Nature":           "#8e44ad",
     "Nature Astronomy": "#c0392b",
     "ApJL":             "#2471a3",
+    "arXiv":            "#b7950b",
 }
 
 def build_html_email(summaries: list[dict]) -> str:
@@ -323,9 +414,13 @@ def build_html_email(summaries: list[dict]) -> str:
             cn_title = cn_title_match.group(1).strip() if cn_title_match else ""
             summary_html = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", item["summary"])
             summary_html = summary_html.replace("\n", "<br>")
+            journal_info = extract_submission_info(
+                item.get("journal_ref", ""), item.get("comment", "")
+            )
             parts += [
                 f"<h2 style='color:#2d3561'>{i}. {item['title']}</h2>",
                 f"<p style='color:#555;font-size:0.95em;margin-top:-0.5em'>{cn_title}</p>" if cn_title else "",
+                f"<p style='color:#888;font-size:0.9em'>{journal_info}</p>" if journal_info else "",
                 f"<p><a href='{item['link']}'>→ 原文链接</a></p>",
                 f"<div style='line-height:1.7'>{summary_html}</div>",
                 "<hr style='margin:1.5em 0'>",
@@ -365,7 +460,7 @@ def main():
     seen = load_seen()
 
     # Gather all articles from all sources
-    all_articles = fetch_rss() + fetch_apjl()
+    all_articles = fetch_rss() + fetch_apjl() + fetch_arxiv_daily()
     new_articles = [a for a in all_articles if a["id"] not in seen]
 
     if not new_articles:
@@ -410,10 +505,12 @@ def main():
         print("  Summarizing...")
         summary = summarize(title, content, is_abstract_only)
         summaries.append({
-            "title":   title,
-            "link":    article["link"],
-            "summary": summary,
-            "journal": article.get("journal", ""),
+            "title":       title,
+            "link":        article["link"],
+            "summary":     summary,
+            "journal":     article.get("journal", ""),
+            "journal_ref": article.get("journal_ref", ""),
+            "comment":     article.get("comment", ""),
         })
         seen.add(article["id"])
         save_seen(seen)  # save immediately after each article
