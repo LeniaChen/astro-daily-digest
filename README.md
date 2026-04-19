@@ -17,14 +17,9 @@ Every day at 8:00 AM, the script:
 
 Each paper summary includes:
 
-- Title
-- Plain-language introduction (2–3 sentences)
-- Core physics question and its place in the field
-- Methods, data, and key assumptions
-- Main conclusions and strength of evidence
-- Physical implications and broader impact
-- Critical assessment: genuine contribution or incremental work?
-- Items 1–10: Background / Scientific goal / Method / Results / Conclusion / Significance / Whether it touches fundamental physics / Whether it offers a new physical picture / Whether it addresses a major astrophysical problem / Whether the work is easily replaceable by AI
+- Title, arXiv category (e.g. *Astrophysics of Galaxies*), and keywords (extracted from full text when available)
+- For **astro-ph.GA** papers: full structured summary — introduction, core physics question, methods & data, main conclusions, physical implications, and critical assessment (Items 1–10)
+- For **other categories**: concise plain-language summary — what was done, what was found, and why it matters
 
 ---
 
@@ -322,6 +317,11 @@ Files generated at runtime (not tracked by git):
 ---
 
 ## Changelog
+
+### 2026-04-19
+
+**New: category, keywords, and adaptive summary depth**
+Each paper in the email now shows its arXiv category (e.g. *Astrophysics of Galaxies*) and keywords extracted from the arXiv HTML full text. Papers in `astro-ph.GA` receive the full structured 10-point summary; papers in other categories receive a shorter plain-language summary (what was done, conclusion, significance).
 
 ### 2026-04-13
 

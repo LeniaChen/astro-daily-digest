@@ -102,6 +102,28 @@ SUMMARY_PROMPT = """\
 10. **这类工作是否容易被 AI 替代**（是/否，说明原因）
 """
 
+SIMPLE_SUMMARY_PROMPT = """\
+你是一位天体物理学研究者。请用通俗直白简单的语言总结以下论文，面向非该细分领域的天体物理研究者。
+
+论文标题：{title}
+
+{content_label}：
+{content}
+
+请按以下格式输出，每项1-2句话，说最本质的内容，不废话：
+
+【中文标题】论文标题的中文翻译
+
+**工作内容**
+这篇文章做了什么？
+
+**主要结论**
+得出了什么结论？
+
+**意义**
+这个结论有什么意义？
+"""
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def load_seen() -> set:
@@ -216,6 +238,9 @@ def fetch_arxiv_daily() -> list[dict]:
             if not arxiv_id or arxiv_id in seen_ids:
                 continue
             seen_ids.add(arxiv_id)
+            # Extract primary category from RSS tags
+            tags = entry.get("tags", [])
+            primary_cat = tags[0].get("term", "") if tags else ""
             articles.append({
                 "title":       entry.title,
                 "link":        f"https://arxiv.org/abs/{arxiv_id}",
@@ -225,6 +250,7 @@ def fetch_arxiv_daily() -> list[dict]:
                 "arxiv_id":    arxiv_id,
                 "journal_ref": "",
                 "comment":     "",
+                "categories":  primary_cat,
             })
 
     if not articles:
@@ -327,14 +353,28 @@ def search_semantic_scholar_arxiv(title: str) -> "str | None":
         return None
 
 
-def fetch_arxiv_html(arxiv_id: str) -> "str | None":
-    """Fetch and clean the HTML full text from arXiv. Returns plain text or None."""
+def fetch_arxiv_html(arxiv_id: str) -> "tuple[str, str] | tuple[None, str]":
+    """Fetch and clean the HTML full text from arXiv.
+    Returns (plain_text, keywords). text is None if fetch failed.
+    keywords is '' if not found in the paper.
+    """
     url = f"https://arxiv.org/html/{arxiv_id}"
     try:
         resp = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
         if resp.status_code != 200:
-            return None
+            return None, ""
         soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Extract keywords from ltx_classification div before removing elements
+        keywords = ""
+        for div in soup.find_all("div", class_="ltx_classification"):
+            h6 = div.find("h6")
+            if h6 and "keyword" in h6.get_text().lower():
+                # Keywords are the text nodes directly inside the div, after the h6
+                h6.decompose()
+                keywords = div.get_text(separator=" ", strip=True)
+                break
+
         # Remove noisy elements
         for tag in soup.find_all(["script", "style", "nav", "footer", "figure", "table"]):
             tag.decompose()
@@ -354,26 +394,28 @@ def fetch_arxiv_html(arxiv_id: str) -> "str | None":
         words = text.split()
         if len(words) > 10000:
             text = " ".join(words[:10000]) + "\n\n[全文已截断至前 10000 词]"
-        return text
+        return text, keywords
     except Exception as e:
         print(f"  arXiv HTML fetch error: {e}")
-        return None
+        return None, ""
 
 
-def summarize(title: str, content: str, is_abstract_only: bool) -> str:
+def summarize(title: str, content: str, is_abstract_only: bool, is_ga: bool = True) -> str:
     client = OpenAI(
         base_url="https://api.deepseek.com",
         api_key=DEEPSEEK_API_KEY,
     )
     content_label = "摘要（注意：未找到全文，仅基于摘要总结，信息有限）" if is_abstract_only else "全文"
-    prompt = SUMMARY_PROMPT.format(
+    prompt_template = SUMMARY_PROMPT if is_ga else SIMPLE_SUMMARY_PROMPT
+    prompt = prompt_template.format(
         title=title,
         content_label=content_label,
         content=content,
     )
+    max_tokens = 1800 if is_ga else 600
     msg = client.chat.completions.create(
         model="deepseek-chat",
-        max_tokens=1800,
+        max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
     result = msg.choices[0].message.content
@@ -422,9 +464,18 @@ def build_html_email(summaries: list[dict]) -> str:
             journal_info = extract_submission_info(
                 item.get("journal_ref", ""), item.get("comment", "")
             )
+            categories = item.get("categories", "")
+            keywords   = item.get("keywords", "")
+            meta_parts = []
+            if categories:
+                meta_parts.append(f"【相关领域】{categories}")
+            if keywords:
+                meta_parts.append(f"【关键词】{keywords}")
+            meta_line = "&nbsp;&nbsp;|&nbsp;&nbsp;".join(meta_parts)
             parts += [
                 f"<h2 style='color:#2d3561'>{i}. {item['title']}</h2>",
                 f"<p style='color:#555;font-size:0.95em;margin-top:-0.5em'>{cn_title}</p>" if cn_title else "",
+                f"<p style='color:#888;font-size:0.85em;margin-top:-0.4em'>{meta_line}</p>" if meta_line else "",
                 f"<p style='color:#888;font-size:0.9em'>{journal_info}</p>" if journal_info else "",
                 f"<p><a href='{item['link']}'>→ 原文链接</a></p>",
                 f"<div style='line-height:1.7'>{summary_html}</div>",
@@ -493,9 +544,10 @@ def main():
             time.sleep(1)
 
         full_text = None
+        keywords  = ""
         if arxiv_id:
             print(f"  arXiv ID: {arxiv_id} — fetching HTML...")
-            full_text = fetch_arxiv_html(arxiv_id)
+            full_text, keywords = fetch_arxiv_html(arxiv_id)
 
         if full_text:
             content          = full_text
@@ -506,9 +558,13 @@ def main():
             is_abstract_only = True
             print("  Falling back to abstract.")
 
+        # Determine if GA article
+        categories = article.get("categories", "")
+        is_ga = "astro-ph.GA" in categories if categories else True  # non-arXiv默认用完整模板
+
         # 2. Summarize
         print("  Summarizing...")
-        summary = summarize(title, content, is_abstract_only)
+        summary = summarize(title, content, is_abstract_only, is_ga=is_ga)
         summaries.append({
             "title":       title,
             "link":        article["link"],
@@ -516,6 +572,8 @@ def main():
             "journal":     article.get("journal", ""),
             "journal_ref": article.get("journal_ref", ""),
             "comment":     article.get("comment", ""),
+            "categories":  categories,
+            "keywords":    keywords,
         })
         seen.add(article["id"])
         save_seen(seen)  # save immediately after each article
