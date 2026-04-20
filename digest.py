@@ -401,12 +401,9 @@ def fetch_arxiv_html(arxiv_id: str) -> "tuple[str, str] | tuple[None, str]":
 
 
 def summarize(title: str, content: str, is_abstract_only: bool, is_ga: bool = True) -> str:
-    import httpx
-    proxy_url = f"http://{PROXY_HOST}:{PROXY_PORT}" if PROXY_HOST else None
     client = OpenAI(
         base_url="https://api.deepseek.com",
         api_key=DEEPSEEK_API_KEY,
-        http_client=httpx.Client(proxy=proxy_url) if proxy_url else None,
     )
     content_label = "摘要（注意：未找到全文，仅基于摘要总结，信息有限）" if is_abstract_only else "全文"
     prompt_template = SUMMARY_PROMPT if is_ga else SIMPLE_SUMMARY_PROMPT
@@ -416,15 +413,24 @@ def summarize(title: str, content: str, is_abstract_only: bool, is_ga: bool = Tr
         content=content,
     )
     max_tokens = 1800 if is_ga else 600
-    msg = client.chat.completions.create(
-        model="deepseek-chat",
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    result = msg.choices[0].message.content
-    if is_abstract_only:
-        result = "⚠️ **注意：arXiv 未找到全文，以下总结仅基于摘要，信息有限。**\n\n" + result
-    return result
+    for attempt in range(3):
+        try:
+            msg = client.chat.completions.create(
+                model="deepseek-chat",
+                max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}],
+                timeout=60,
+            )
+            result = msg.choices[0].message.content
+            if is_abstract_only:
+                result = "⚠️ **注意：arXiv 未找到全文，以下总结仅基于摘要，信息有限。**\n\n" + result
+            return result
+        except Exception as e:
+            if attempt < 2:
+                print(f"  总结超时，30秒后重试（第 {attempt + 1} 次）: {e}")
+                time.sleep(30)
+            else:
+                raise
 
 
 JOURNAL_ORDER = ["Nature", "Nature Astronomy", "ApJL", "arXiv"]
