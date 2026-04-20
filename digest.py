@@ -401,9 +401,12 @@ def fetch_arxiv_html(arxiv_id: str) -> "tuple[str, str] | tuple[None, str]":
 
 
 def summarize(title: str, content: str, is_abstract_only: bool, is_ga: bool = True) -> str:
+    import httpx
+    proxy_url = f"http://{PROXY_HOST}:{PROXY_PORT}" if PROXY_HOST else None
     client = OpenAI(
         base_url="https://api.deepseek.com",
         api_key=DEEPSEEK_API_KEY,
+        http_client=httpx.Client(proxy=proxy_url) if proxy_url else None,
     )
     content_label = "摘要（注意：未找到全文，仅基于摘要总结，信息有限）" if is_abstract_only else "全文"
     prompt_template = SUMMARY_PROMPT if is_ga else SIMPLE_SUMMARY_PROMPT
